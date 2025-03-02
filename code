@@ -1,0 +1,197 @@
+import pandas as pd
+import emoji
+from datetime import datetime
+import re
+import nltk
+from nltk.sentiment import SentimentIntensityAnalyzer
+import streamlit as st
+
+# Download VADER lexicon for sentiment analysis
+nltk.download('vader_lexicon', quiet=True)
+sia = SentimentIntensityAnalyzer()
+
+# Emoji categories for analysis
+MOOD_EMOJIS = {
+    "Joy": ["😃", "😄", "🙂", "😁", "😆", "🤣", "😂"],
+    "Anger": ["😡", "🤬", "😠", "😤", "😒", "🙄"],
+    "Sadness": ["😢", "😭", "😖", "😣", "☹️", "😔", "🙁", "😞", "😥", "😓"],
+    "Fear/Surprise": ["😦", "😧", "😮", "😲", "😯", "😱"],
+    "Disgust": ["🤢", "🤮"],
+    "Love/Affection": ["❤️", "💛", "💚", "💙", "💜", "😍", "🥰", "😘"]
+}
+
+# Function to convert emojis to text
+def convert_emojis(text):
+    return emoji.demojize(text, language="en")  # Convert 🙂 to ":slightly_smiling_face:"
+
+# Function to analyze mood based on emojis
+def analyze_mood(text):
+    mood_count = {mood: 0 for mood in MOOD_EMOJIS}
+    total_emoji_count = 0
+    positive_emoji_count = 0
+
+    for mood, emojis in MOOD_EMOJIS.items():
+        for emoji_char in emojis:
+            count = text.count(emoji_char)
+            mood_count[mood] += count
+            total_emoji_count += count
+
+            if mood in ["Joy", "Love/Affection"]:
+                positive_emoji_count += count
+
+    max_count = max(mood_count.values(), default=0)
+    dominant_moods = [mood for mood, count in mood_count.items() if count == max_count] if max_count > 0 else ["Neutral"]
+
+    emoji_score = (positive_emoji_count / total_emoji_count) * (100/300) if total_emoji_count > 0 else 0
+
+    return {
+        "dominant_mood": ", ".join(dominant_moods),
+        "total_emojis": total_emoji_count,
+        "positive_emojis": positive_emoji_count,
+        "emoji_score": emoji_score
+    }
+
+# Function to analyze sentiment using VADER
+def analyze_sentiment(text):
+    sentiment = sia.polarity_scores(text)
+    if sentiment['compound'] >= 0.05:  # Positive
+        sentiment_score = (sentiment['compound']) * (100/300)
+    elif sentiment['compound'] <= -0.05:  # Negative
+        sentiment_score = 0
+    else:  # Neutral
+        sentiment_score = (0.5) * (100/300)
+
+    return {
+        "sentiment": sentiment,
+        "sentiment_score": sentiment_score
+    }
+
+# Function to analyze response time
+def analyze_response_time(messages):
+    total_response_time = 0
+    response_count = 0
+
+    for i in range(1, len(messages)):
+        if messages[i]["Speaker"] != messages[i - 1]["Speaker"]:
+            time_diff = (messages[i]["Timestamp"] - messages[i - 1]["Timestamp"]).total_seconds() / 60  # Time in minutes
+            total_response_time += time_diff
+            response_count += 1
+
+    if response_count > 0:
+        avg_response_time = total_response_time / response_count
+        # Score based on how fast the response is
+        if avg_response_time < 5:
+            response_time_score = 100/300  # Responding fast (< 5 minutes)
+        elif avg_response_time < 30:
+            response_time_score = 75/300  # Responding within 30 minutes
+        elif avg_response_time < 120:
+            response_time_score = 50/300  # Responding within 2 hours
+        else:
+            response_time_score = 25/300  # Responding after a long time
+    else:
+        response_time_score = 0
+
+    return {
+        "avg_response_time": avg_response_time if response_count > 0 else "No data",
+        "response_time_score": response_time_score
+    }
+
+# Function to calculate comprehensive score based on parameters
+def calculate_comprehensive_score(double_text_score, emoji_score, sentiment_score, response_time_score):
+    weights = {
+        "double_text": 0.20,
+        "emoji": 0.30,
+        "sentiment": 0.30,
+        "response_time": 0.20
+    }
+    
+    weighted_scores = {
+        "double_text": double_text_score * weights["double_text"],
+        "emoji": emoji_score * weights["emoji"],
+        "sentiment": sentiment_score * weights["sentiment"],
+        "response_time": response_time_score * weights["response_time"]
+    }
+    
+    total_score = sum(weighted_scores.values()) * 300
+    
+    return {
+        "weighted_scores": weighted_scores,
+        "total_score": total_score
+    }
+
+# Streamlit UI
+def main():
+    st.title("WhatsApp Chat Analyzer")
+    
+    # Example of valid input format
+    st.write("""
+    ### Instructions for Valid Input:
+    1. Each message should be in the format: `[timestamp] Name: Message`
+    2. Example:
+        ```
+        [4:34 pm, 28/02/2025] mimi: Hello, I love you so much!
+        [4:43 pm, 28/02/2025] thimi: Hey! I love you too! ❤️
+        ```
+    """)
+
+    chat_input = st.text_area("Enter your WhatsApp chat log here:", height=300)
+
+    if st.button("Analyze"):
+        if not chat_input.strip():
+            st.warning("Please enter some text to analyze.")
+        else:
+            chat_log = chat_input.splitlines()
+            messages = []
+            
+            for line in chat_log:
+                # Parse each message with [timestamp] Name: Message format (handling am/pm)
+                match = re.match(r'\[(\d{1,2}:\d{2} (?:am|pm)), (\d{2}/\d{2}/\d{4})\] (.*?): (.*)', line)
+                if match:
+                    time_str = match.group(1)
+                    date_str = match.group(2)
+                    timestamp = datetime.strptime(f"{time_str}, {date_str}", "%I:%M %p, %d/%m/%Y")
+                    speaker = match.group(3)
+                    message = match.group(4)
+                    messages.append({"Speaker": speaker, "Raw Text": message, "Timestamp": timestamp})
+            
+            if messages:
+                all_text = " ".join([msg["Raw Text"] for msg in messages])
+                
+                # Analyze emojis, sentiment, and response time
+                emoji_analysis = analyze_mood(all_text)
+                sentiment_analysis = analyze_sentiment(all_text)
+                response_time_analysis = analyze_response_time(messages)
+                
+                # Dummy double text score (since Streamlit UI doesn't track double texting)
+                double_text_score = 0.75  # Adjust this score for real data
+                
+                # Calculate the comprehensive score
+                comprehensive_score = calculate_comprehensive_score(
+                    double_text_score, 
+                    emoji_analysis["emoji_score"], 
+                    sentiment_analysis["sentiment_score"], 
+                    response_time_analysis["response_time_score"]
+                )
+                
+                st.write(f"### Results for the analyzed chat:")
+                st.write(f"**Dominant Mood**: {emoji_analysis['dominant_mood']}")
+                st.write(f"**Total Emojis Used**: {emoji_analysis['total_emojis']}")
+                st.write(f"**Positive Emojis**: {emoji_analysis['positive_emojis']}")
+                st.write(f"**Sentiment Score**: {sentiment_analysis['sentiment_score'] * 300:.2f}/100")
+                st.write(f"**Average Response Time**: {response_time_analysis['avg_response_time']} minutes")
+                st.write(f"**Comprehensive Score**: {comprehensive_score['total_score']:.2f}/100")
+                
+                # Interpretation
+                if comprehensive_score['total_score'] >= 80:
+                    st.success("Very positive communication pattern! This person seems to like you a lot! 😊")
+                elif comprehensive_score['total_score'] >= 60:
+                    st.info("Generally positive communication pattern.")
+                elif comprehensive_score['total_score'] >= 40:
+                    st.warning("Neutral communication pattern.")
+                else:
+                    st.error("Negative communication pattern detected.")
+            else:
+                st.warning("No valid messages found. Make sure your input is in the correct format.")
+
+if __name__ == "__main__":
+    main()
