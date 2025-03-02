@@ -1,11 +1,11 @@
 Love Enigma System
 1. Overview :
 a. LoveEnigma is a web-based application designed to analyze and process WhatsApp
-messages using Streamlit. Users can simply copy and paste their chat history into the app,
-and it will extract meaningful insights, trends, or patterns from the conversation. The app
-may offer features like sentiment analysis, keyword extraction to help users better
-understand their interactions. With an intuitive interface, LoveEnigma makes it easy
-for anyone to explore their WhatsApp conversations in a new and insightful
+messages using Streamlit. Users can simply copy and paste their chat ohistory into the
+app, and it will extract meaningful insights, trends, or patterns from the conversation. The
+app may offer features like sentiment analysis, keyword extraction to help users
+better understand their interactions. With an intuitive interface, LoveEnigma makes it
+easy for anyone to explore their WhatsApp conversations in a new and insightful
 way—whether for fun, self-reflection, or deeper communication analysis.
 2. System Features:
 a. Text Preprocessing
@@ -48,18 +48,3 @@ c. Usage :
 Enjoy using LoveEnigma!
 4. System Workflow:
 a. Below is the flowchart illustrating the execution process:
-START
-Enter
-messages
-Check emojis
-Check Keywords
-Calculate response
-time
-Calculate frequency
-of messages
-Calculate percentage
-of interest
-Display
-percentage of
-interest
-END
